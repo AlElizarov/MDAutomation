@@ -6,6 +6,8 @@ strict: true
 
 nav:
   - Home: index.md
+  - API: api.md
   - Conventions: conventions.md
   - Tasks:
       - MDA-3: tasks/MDA-3.md
+      - MDA-4: tasks/MDA-4.md

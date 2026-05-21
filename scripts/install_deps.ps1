@@ -10,8 +10,6 @@ $Root = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $VenvFullPath = Join-Path $Root $VenvPath
 $TmpPath = Join-Path $Root ".pip-tmp"
 $DownloadPath = Join-Path $Root ".pip-download"
-$WorkaroundPath = Join-Path $Root ".pip-workaround"
-$SiteCustomizePath = Join-Path $WorkaroundPath "sitecustomize.py"
 $RequirementsPath = Join-Path $Root $Requirements
 $PySocksWheelPath = Join-Path $DownloadPath "PySocks-1.7.1-py3-none-any.whl"
 
@@ -19,34 +17,8 @@ if (-not (Test-Path $RequirementsPath)) {
     throw "Requirements file not found: $RequirementsPath"
 }
 
-New-Item -ItemType Directory -Force -Path $TmpPath, $DownloadPath, $WorkaroundPath | Out-Null
-
-$SiteCustomize = @'
-import os
-import tempfile
-import uuid
-
-
-def _mkdtemp(suffix=None, prefix=None, dir=None):
-    suffix = "" if suffix is None else suffix
-    prefix = "tmp" if prefix is None else prefix
-    base_dir = tempfile.gettempdir() if dir is None else dir
-
-    for _ in range(100):
-        path = os.path.abspath(os.path.join(base_dir, f"{prefix}{uuid.uuid4().hex}{suffix}"))
-        try:
-            os.mkdir(path)
-        except FileExistsError:
-            continue
-        return path
-
-    raise FileExistsError("could not create a unique temporary directory")
-
-
-tempfile.mkdtemp = _mkdtemp
-'@
-
-Set-Content -Path $SiteCustomizePath -Value $SiteCustomize -Encoding utf8
+New-Item -ItemType Directory -Force -Path $TmpPath, $DownloadPath | Out-Null
+$WorkaroundPath = & (Join-Path $PSScriptRoot "ensure_python_workaround.ps1") -Root $Root
 
 $env:PYTHONPATH = $WorkaroundPath
 $env:TEMP = $TmpPath

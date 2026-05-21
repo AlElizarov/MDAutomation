@@ -1,5 +1,10 @@
 .venv/
 site/
+__pycache__/
+*.py[cod]
 .pip-download/
 .pip-tmp/
 .pip-workaround/
+.pytest_cache/
+pytest-cache-files-*/
+uvicorn*.log
