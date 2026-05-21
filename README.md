@@ -85,6 +85,38 @@ Consultation flow starts
 
 ## Development Workflow
 
+### Backend
+
+Install project dependencies locally:
+
+```powershell
+.\scripts\install_deps.ps1
+```
+
+Run the FastAPI application:
+
+```powershell
+.\scripts\run_server.ps1
+```
+
+Open the FastAPI application in a separate PowerShell window:
+
+```powershell
+.\scripts\run_server.ps1 -NewWindow
+```
+
+Run automated tests:
+
+```powershell
+.\scripts\test.ps1
+```
+
+Run the full local CI check:
+
+```powershell
+.\scripts\local-ci.ps1
+```
+
 ### Documentation
 
 Install documentation dependencies locally:
