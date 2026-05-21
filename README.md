@@ -85,6 +85,20 @@ Consultation flow starts
 
 ## Development Workflow
 
+### Documentation
+
+Install documentation dependencies locally:
+
+```powershell
+.\scripts\install_deps.ps1
+```
+
+Build the MkDocs site:
+
+```powershell
+.\.venv\Scripts\python.exe -m mkdocs build --strict --site-dir site
+```
+
 ### Jira
 
 Jira is used for:

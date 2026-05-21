@@ -1,0 +1,5 @@
+.venv/
+site/
+.pip-download/
+.pip-tmp/
+.pip-workaround/
