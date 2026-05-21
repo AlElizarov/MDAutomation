@@ -1,0 +1,11 @@
+site_name: MDAutomation Documentation
+site_description: Documentation for the MDAutomation project.
+docs_dir: docs
+site_dir: site
+strict: true
+
+nav:
+  - Home: index.md
+  - Conventions: conventions.md
+  - Tasks:
+      - MDA-3: tasks/MDA-3.md
