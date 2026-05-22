@@ -117,6 +117,50 @@ Run the full local CI check:
 .\scripts\local-ci.ps1
 ```
 
+Skip the Docker smoke test during local CI:
+
+```powershell
+.\scripts\local-ci.ps1 -SkipDocker
+```
+
+### Docker
+
+Run the Docker smoke test:
+
+```powershell
+.\scripts\smoke-docker.ps1
+```
+
+Start Docker Desktop before running the Docker smoke test:
+
+```powershell
+.\scripts\smoke-docker.ps1 -StartDockerDesktop
+```
+
+Keep the backend container running after the smoke test:
+
+```powershell
+.\scripts\smoke-docker.ps1 -KeepRunning
+```
+
+Run the backend manually with Docker Compose:
+
+```powershell
+docker compose up --build
+```
+
+Check the containerized backend health endpoint:
+
+```powershell
+curl http://localhost:8000/health
+```
+
+Stop Docker Compose services:
+
+```powershell
+docker compose down --remove-orphans
+```
+
 ### Documentation
 
 Install documentation dependencies locally:
