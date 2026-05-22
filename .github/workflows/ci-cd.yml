@@ -40,8 +40,24 @@ jobs:
         with:
           path: site
 
-  deploy-docs:
+  container-smoke:
     needs: validate-project
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Run Docker smoke test
+        shell: pwsh
+        run: ./scripts/smoke-docker.ps1
+
+  deploy-docs:
+    needs:
+      - validate-project
+      - container-smoke
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
