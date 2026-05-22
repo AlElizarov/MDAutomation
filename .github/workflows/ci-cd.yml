@@ -52,6 +52,10 @@ jobs:
 
       - name: Run Docker smoke test
         shell: pwsh
+        env:
+          POSTGRES_DB: mda
+          POSTGRES_USER: mda_user
+          POSTGRES_PASSWORD: ci-postgres-password
         run: ./scripts/smoke-docker.ps1
 
   deploy-docs:

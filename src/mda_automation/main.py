@@ -1,4 +1,7 @@
 from fastapi import FastAPI
+from fastapi.responses import JSONResponse
+
+from mda_automation.database import check_database_connection
 
 
 app = FastAPI(
@@ -9,5 +12,11 @@ app = FastAPI(
 
 
 @app.get("/health", tags=["health"])
-def health() -> dict[str, str]:
-    return {"status": "ok"}
+def health():
+    if check_database_connection():
+        return {"status": "ok", "database": "connected"}
+
+    return JSONResponse(
+        status_code=503,
+        content={"status": "degraded", "database": "unavailable"},
+    )
