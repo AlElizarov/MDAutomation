@@ -5,4 +5,6 @@ This documentation describes the MDAutomation project structure, conventions, an
 ## Contents
 
 - [Naming conventions](conventions.md)
+- [Architecture](architecture.md)
+- [Database](database.md)
 - [Implementation tasks](tasks/MDA-3.md)

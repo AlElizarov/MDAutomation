@@ -8,6 +8,7 @@ nav:
   - Home: index.md
   - API: api.md
   - Architecture: architecture.md
+  - Database: database.md
   - Conventions: conventions.md
   - Tasks:
       - MDA-3: tasks/MDA-3.md
@@ -15,3 +16,4 @@ nav:
       - MDA-5: tasks/MDA-5.md
       - MDA-6: tasks/MDA-6.md
       - MDA-7: tasks/MDA-7.md
+      - MDA-8: tasks/MDA-8.md
