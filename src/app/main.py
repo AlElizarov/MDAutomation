@@ -1,7 +1,6 @@
 from fastapi import FastAPI
-from fastapi.responses import JSONResponse
 
-from app.database import check_database_connection
+from app.api import health
 
 
 app = FastAPI(
@@ -11,12 +10,4 @@ app = FastAPI(
 )
 
 
-@app.get("/health", tags=["health"])
-def health():
-    if check_database_connection():
-        return {"status": "ok", "database": "connected"}
-
-    return JSONResponse(
-        status_code=503,
-        content={"status": "degraded", "database": "unavailable"},
-    )
+app.include_router(health.router)

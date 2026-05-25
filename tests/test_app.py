@@ -1,14 +1,15 @@
 from fastapi.testclient import TestClient
 
-from app import database
 from app import main
+from app.api import health as health_api
+from app.db import session as db_session
 
 
 client = TestClient(main.app)
 
 
 def test_health_returns_ok_when_database_connected(monkeypatch) -> None:
-    monkeypatch.setattr(main, "check_database_connection", lambda: True)
+    monkeypatch.setattr(health_api, "check_database_connection", lambda: True)
 
     response = client.get("/health")
 
@@ -17,7 +18,7 @@ def test_health_returns_ok_when_database_connected(monkeypatch) -> None:
 
 
 def test_health_returns_degraded_when_database_unavailable(monkeypatch) -> None:
-    monkeypatch.setattr(main, "check_database_connection", lambda: False)
+    monkeypatch.setattr(health_api, "check_database_connection", lambda: False)
 
     response = client.get("/health")
 
@@ -34,9 +35,9 @@ def test_get_db_yields_session_and_closes_it(monkeypatch) -> None:
             self.closed = True
 
     session = FakeSession()
-    monkeypatch.setattr(database, "get_session_local", lambda: lambda: session)
+    monkeypatch.setattr(db_session, "get_session_local", lambda: lambda: session)
 
-    dependency = database.get_db()
+    dependency = db_session.get_db()
     yielded_session = next(dependency)
 
     assert yielded_session is session

@@ -219,10 +219,23 @@ function Assert-PersistenceRecordExists {
         [string]$RecordId
     )
 
-    $result = Invoke-PostgresSql -Sql "SELECT count(*) FROM persistence_smoke_records WHERE id = '$RecordId';"
+    $result = Invoke-PostgresSql -Sql "SELECT count(*) FROM leads WHERE id = '$RecordId';"
 
     if ($result -ne "1") {
-        throw "Expected persistence smoke record '$RecordId' to exist, but query returned '$result'."
+        throw "Expected lead persistence smoke record '$RecordId' to exist, but query returned '$result'."
+    }
+}
+
+function Assert-PostgresTableExists {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$TableName
+    )
+
+    $result = Invoke-PostgresSql -Sql "SELECT to_regclass('public.$TableName');"
+
+    if ($result -ne $TableName) {
+        throw "Expected PostgreSQL table '$TableName' to exist, but query returned '$result'."
     }
 }
 
@@ -270,15 +283,18 @@ try {
     Write-Host "Waiting for health endpoint: $HealthUrl"
     Wait-HealthEndpoint -Url $HealthUrl -TimeoutSeconds $TimeoutSeconds
 
+    Write-Host "Applying database migrations..."
+    Invoke-Docker @("compose", "exec", "-T", "backend", "python", "-m", "alembic", "upgrade", "head")
+    Assert-PostgresTableExists -TableName "leads"
+
     if ($SkipPersistenceCheck) {
         Write-Host "Skipping PostgreSQL persistence check."
     }
     else {
         $recordId = [System.Guid]::NewGuid().ToString("N")
 
-        Write-Host "Creating PostgreSQL persistence smoke record..."
-        Invoke-PostgresSql -Sql "CREATE TABLE IF NOT EXISTS persistence_smoke_records (id text PRIMARY KEY, created_at timestamptz NOT NULL DEFAULT now());"
-        Invoke-PostgresSql -Sql "INSERT INTO persistence_smoke_records (id) VALUES ('$recordId');"
+        Write-Host "Creating lead persistence smoke record..."
+        Invoke-PostgresSql -Sql "INSERT INTO leads (id, name, phone, preferred_contact_channel, status) VALUES ('$recordId', 'Smoke Test Lead', '+10000000000', 'telegram', 'new');"
         Assert-PersistenceRecordExists -RecordId $recordId
 
         Write-Host "Restarting PostgreSQL service and verifying persisted data..."
