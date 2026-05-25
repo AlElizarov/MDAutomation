@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 
-from mda_automation.database import check_database_connection
+from app.database import check_database_connection
 
 
 app = FastAPI(

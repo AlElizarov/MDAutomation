@@ -3,7 +3,8 @@ param(
     [string]$HealthUrl = "http://127.0.0.1:8000/health",
     [int]$TimeoutSeconds = 120,
     [switch]$StartDockerDesktop,
-    [switch]$KeepRunning
+    [switch]$KeepRunning,
+    [switch]$SkipPersistenceCheck
 )
 
 $ErrorActionPreference = "Stop"
@@ -58,6 +59,32 @@ function Invoke-NativeCommand {
     }
 }
 
+function Invoke-NativeCommandOutput {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$FilePath,
+
+        [string[]]$Arguments
+    )
+
+    $previousErrorActionPreference = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+
+    try {
+        $output = & $FilePath @Arguments 2>&1
+        $exitCode = $LASTEXITCODE
+    }
+    finally {
+        $ErrorActionPreference = $previousErrorActionPreference
+    }
+
+    if ($exitCode -ne 0) {
+        throw "Command failed with exit code ${exitCode}: $FilePath $($Arguments -join ' ')`n$($output -join [Environment]::NewLine)"
+    }
+
+    return ($output -join [Environment]::NewLine).Trim()
+}
+
 function Invoke-Docker {
     param(
         [Parameter(Mandatory = $true)]
@@ -65,6 +92,60 @@ function Invoke-Docker {
     )
 
     Invoke-NativeCommand -FilePath "docker" -Arguments $Arguments
+}
+
+function Invoke-DockerOutput {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string[]]$Arguments
+    )
+
+    return Invoke-NativeCommandOutput -FilePath "docker" -Arguments $Arguments
+}
+
+function Get-DotEnvValue {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Name
+    )
+
+    $envPath = Join-Path $Root ".env"
+
+    if (-not (Test-Path $envPath)) {
+        return $null
+    }
+
+    foreach ($line in Get-Content $envPath) {
+        if ($line -match "^\s*$Name\s*=\s*(.*)\s*$") {
+            return $Matches[1].Trim('"').Trim("'")
+        }
+    }
+
+    return $null
+}
+
+function Get-PostgresSetting {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Name,
+
+        [Parameter(Mandatory = $true)]
+        [string]$DefaultValue
+    )
+
+    $environmentValue = [Environment]::GetEnvironmentVariable($Name)
+
+    if (-not [string]::IsNullOrWhiteSpace($environmentValue)) {
+        return $environmentValue
+    }
+
+    $dotEnvValue = Get-DotEnvValue -Name $Name
+
+    if (-not [string]::IsNullOrWhiteSpace($dotEnvValue)) {
+        return $dotEnvValue
+    }
+
+    return $DefaultValue
 }
 
 function Wait-DockerReady {
@@ -107,6 +188,44 @@ function Wait-HealthEndpoint {
     throw "Health endpoint did not return the expected response within $TimeoutSeconds seconds: $Url"
 }
 
+function Invoke-PostgresSql {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Sql
+    )
+
+    return Invoke-DockerOutput @(
+        "compose",
+        "exec",
+        "-T",
+        "db",
+        "psql",
+        "-v",
+        "ON_ERROR_STOP=1",
+        "-U",
+        $PostgresUser,
+        "-d",
+        $PostgresDb,
+        "-t",
+        "-A",
+        "-c",
+        $Sql
+    )
+}
+
+function Assert-PersistenceRecordExists {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$RecordId
+    )
+
+    $result = Invoke-PostgresSql -Sql "SELECT count(*) FROM persistence_smoke_records WHERE id = '$RecordId';"
+
+    if ($result -ne "1") {
+        throw "Expected persistence smoke record '$RecordId' to exist, but query returned '$result'."
+    }
+}
+
 Set-Location $Root
 
 if (-not (Test-CommandExists "docker")) {
@@ -134,6 +253,8 @@ Invoke-Docker @("compose", "version")
 
 Wait-DockerReady -TimeoutSeconds $TimeoutSeconds
 
+$PostgresDb = Get-PostgresSetting -Name "POSTGRES_DB" -DefaultValue "mda"
+$PostgresUser = Get-PostgresSetting -Name "POSTGRES_USER" -DefaultValue "mda_user"
 $smokePassed = $false
 
 try {
@@ -148,6 +269,34 @@ try {
 
     Write-Host "Waiting for health endpoint: $HealthUrl"
     Wait-HealthEndpoint -Url $HealthUrl -TimeoutSeconds $TimeoutSeconds
+
+    if ($SkipPersistenceCheck) {
+        Write-Host "Skipping PostgreSQL persistence check."
+    }
+    else {
+        $recordId = [System.Guid]::NewGuid().ToString("N")
+
+        Write-Host "Creating PostgreSQL persistence smoke record..."
+        Invoke-PostgresSql -Sql "CREATE TABLE IF NOT EXISTS persistence_smoke_records (id text PRIMARY KEY, created_at timestamptz NOT NULL DEFAULT now());"
+        Invoke-PostgresSql -Sql "INSERT INTO persistence_smoke_records (id) VALUES ('$recordId');"
+        Assert-PersistenceRecordExists -RecordId $recordId
+
+        Write-Host "Restarting PostgreSQL service and verifying persisted data..."
+        Invoke-Docker @("compose", "restart", "db")
+        Wait-HealthEndpoint -Url $HealthUrl -TimeoutSeconds $TimeoutSeconds
+        Assert-PersistenceRecordExists -RecordId $recordId
+
+        Write-Host "Recreating Docker Compose environment and verifying persisted data..."
+        Invoke-Docker @("compose", "down", "--remove-orphans")
+        Invoke-Docker @("compose", "up", "-d")
+        Wait-HealthEndpoint -Url $HealthUrl -TimeoutSeconds $TimeoutSeconds
+        Assert-PersistenceRecordExists -RecordId $recordId
+
+        Write-Host "Recreating backend container and verifying persisted data..."
+        Invoke-Docker @("compose", "up", "-d", "--force-recreate", "backend")
+        Wait-HealthEndpoint -Url $HealthUrl -TimeoutSeconds $TimeoutSeconds
+        Assert-PersistenceRecordExists -RecordId $recordId
+    }
 
     $smokePassed = $true
     Write-Host "Docker smoke test passed."

@@ -6,12 +6,23 @@ $ErrorActionPreference = "Stop"
 
 $Root = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $VenvPython = Join-Path $Root "$VenvPath\Scripts\python.exe"
-$WorkaroundPath = & (Join-Path $PSScriptRoot "ensure_python_workaround.ps1") -Root $Root
+$TempRoot = Join-Path ([System.IO.Path]::GetTempPath()) "MDAutomation-python-$([System.Guid]::NewGuid().ToString('N'))"
+$PreviousPythonPath = $env:PYTHONPATH
 
 if (-not (Test-Path $VenvPython)) {
     throw "Virtual environment not found. Run .\scripts\install_deps.ps1 first."
 }
 
-$env:PYTHONPATH = $WorkaroundPath
+try {
+    $WorkaroundPath = & (Join-Path $PSScriptRoot "ensure_python_workaround.ps1") -Root $TempRoot
+    $env:PYTHONPATH = $WorkaroundPath
 
-& $VenvPython -m pytest
+    & $VenvPython -m pytest
+}
+finally {
+    $env:PYTHONPATH = $PreviousPythonPath
+
+    if (Test-Path $TempRoot) {
+        Remove-Item -LiteralPath $TempRoot -Recurse -Force
+    }
+}

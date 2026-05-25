@@ -15,4 +15,4 @@ COPY src ./src
 
 EXPOSE 8000
 
-CMD ["sh", "-c", "python -m uvicorn mda_automation.main:app --app-dir src --host ${APP_HOST} --port ${APP_PORT}"]
+CMD ["sh", "-c", "python -m uvicorn app.main:app --app-dir src --host ${APP_HOST} --port ${APP_PORT}"]
