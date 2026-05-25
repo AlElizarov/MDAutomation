@@ -22,7 +22,7 @@ Write-Host "Running backend tests..."
 & (Join-Path $PSScriptRoot "test.ps1") -VenvPath $VenvPath
 
 Write-Host "Building documentation..."
-& $VenvPython -m mkdocs build --strict --site-dir site
+& (Join-Path $PSScriptRoot "build_docs.ps1") -VenvPath $VenvPath
 
 if ($SkipDocker) {
     Write-Host "Skipping Docker smoke test."

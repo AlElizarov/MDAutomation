@@ -237,7 +237,7 @@ Install documentation dependencies locally:
 Build the MkDocs site:
 
 ```powershell
-.\.venv\Scripts\python.exe -m mkdocs build --strict --site-dir site
+.\scripts\build_docs.ps1
 ```
 
 ### Jira
