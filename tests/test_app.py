@@ -1,7 +1,7 @@
 from fastapi.testclient import TestClient
 
-from mda_automation import database
-from mda_automation import main
+from app import database
+from app import main
 
 
 client = TestClient(main.app)
