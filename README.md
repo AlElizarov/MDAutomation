@@ -151,10 +151,20 @@ Run the Docker smoke test:
 .\scripts\smoke-docker.ps1
 ```
 
+The Docker smoke test also verifies PostgreSQL persistence. It creates a marker
+record, restarts the PostgreSQL container, recreates the Compose environment,
+and confirms that the record is still present.
+
 Start Docker Desktop before running the Docker smoke test:
 
 ```powershell
 .\scripts\smoke-docker.ps1 -StartDockerDesktop
+```
+
+Skip the PostgreSQL persistence check:
+
+```powershell
+.\scripts\smoke-docker.ps1 -SkipPersistenceCheck
 ```
 
 Keep the backend container running after the smoke test:
@@ -198,6 +208,23 @@ Stop Docker Compose services:
 ```powershell
 docker compose down --remove-orphans
 ```
+
+PostgreSQL data is stored in the named Docker volume `postgres_data`, mounted at
+`/var/lib/postgresql/data` inside the database container. The data survives:
+
+- `docker compose restart`
+- `docker compose down` followed by `docker compose up`
+- backend container recreation
+
+To reset the local database completely, stop the services and remove Compose
+volumes:
+
+```powershell
+docker compose down --volumes --remove-orphans
+```
+
+Only use `--volumes` when you intentionally want to delete local PostgreSQL
+data.
 
 ### Documentation
 
