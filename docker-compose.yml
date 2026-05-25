@@ -1,11 +1,32 @@
 services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-mda}
+      POSTGRES_USER: ${POSTGRES_USER:-mda_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD environment variable is required}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
   backend:
     build:
       context: .
       dockerfile: Dockerfile
+    depends_on:
+      db:
+        condition: service_healthy
     environment:
       APP_HOST: ${APP_HOST:-0.0.0.0}
       APP_PORT: ${APP_PORT:-8000}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-mda_user}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD environment variable is required}@db:5432/${POSTGRES_DB:-mda}
     ports:
       - "${APP_PORT:-8000}:8000"
     healthcheck:
@@ -18,3 +39,6 @@ services:
       timeout: 5s
       retries: 5
       start_period: 10s
+
+volumes:
+  postgres_data:

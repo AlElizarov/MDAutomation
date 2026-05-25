@@ -125,6 +125,26 @@ Skip the Docker smoke test during local CI:
 
 ### Docker
 
+Docker Compose starts the backend together with PostgreSQL.
+
+Create a local `.env` file from `.env.example` and set a local database
+password:
+
+```powershell
+Copy-Item .env.example .env
+```
+
+Required PostgreSQL settings:
+
+```text
+POSTGRES_DB=mda
+POSTGRES_USER=mda_user
+POSTGRES_PASSWORD=<local-password>
+```
+
+`docker-compose.yml` builds `DATABASE_URL` for the backend from these
+PostgreSQL settings.
+
 Run the Docker smoke test:
 
 ```powershell
@@ -153,6 +173,24 @@ Check the containerized backend health endpoint:
 
 ```powershell
 curl http://localhost:8000/health
+```
+
+Healthy response:
+
+```json
+{
+  "status": "ok",
+  "database": "connected"
+}
+```
+
+If PostgreSQL is unavailable, the endpoint returns HTTP 503:
+
+```json
+{
+  "status": "degraded",
+  "database": "unavailable"
+}
 ```
 
 Stop Docker Compose services:
