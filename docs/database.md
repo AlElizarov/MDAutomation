@@ -128,7 +128,7 @@ Apply migrations locally:
 
 ```powershell
 $env:DATABASE_URL = "postgresql://mda_user:<local-password>@localhost:5432/mda"
-.\scripts\migrate.ps1
+.\scripts\db\migrate.ps1
 ```
 
 Apply migrations inside Docker Compose:
@@ -170,19 +170,19 @@ where data loss is acceptable.
 Run unit tests:
 
 ```powershell
-.\scripts\test.ps1
+.\scripts\dev\test.ps1
 ```
 
 Run the documentation build:
 
 ```powershell
-.\scripts\build_docs.ps1
+.\scripts\docs\build_docs.ps1
 ```
 
 Run the Docker smoke test:
 
 ```powershell
-.\scripts\smoke-docker.ps1
+.\scripts\docker\smoke-docker.ps1
 ```
 
 The Docker smoke test:

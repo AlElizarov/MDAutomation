@@ -12,19 +12,35 @@ The API is implemented with FastAPI. Interactive documentation is exposed automa
 
 ### `GET /health`
 
-Checks that the backend application is running and can accept HTTP requests.
+Checks that the backend application is running and can connect to the database.
 
-Response status:
+Successful response status:
 
 ```text
 200 OK
+```
+
+Successful response body:
+
+```json
+{
+  "status": "ok",
+  "database": "connected"
+}
+```
+
+If the database is unavailable, the endpoint returns:
+
+```text
+503 Service Unavailable
 ```
 
 Response body:
 
 ```json
 {
-  "status": "ok"
+  "status": "degraded",
+  "database": "unavailable"
 }
 ```
 

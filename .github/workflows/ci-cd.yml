@@ -56,7 +56,7 @@ jobs:
           POSTGRES_DB: mda
           POSTGRES_USER: mda_user
           POSTGRES_PASSWORD: ci-postgres-password
-        run: ./scripts/smoke-docker.ps1
+        run: ./scripts/docker/smoke-docker.ps1
 
   deploy-docs:
     needs:

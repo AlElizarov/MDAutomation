@@ -9,7 +9,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-$Root = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+$Root = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
 $ComposePath = Join-Path $Root $ComposeFile
 
 if (-not (Test-Path $ComposePath)) {

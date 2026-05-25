@@ -10,7 +10,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-$Root = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+$Root = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
 $ComposePath = Join-Path $Root $ComposeFile
 $PreviousAppPort = $env:APP_PORT
 $LastDockerInfoError = ""
@@ -122,7 +122,7 @@ function Wait-HealthEndpoint {
 if ($NewWindow) {
     $startDockerFlag = if ($StartDockerDesktop) { " -StartDockerDesktop" } else { "" }
     $noBuildFlag = if ($NoBuild) { " -NoBuild" } else { "" }
-    $command = "Set-Location '$Root'; .\scripts\run_server.ps1 -ComposeFile '$ComposeFile' -HostAddress '$HostAddress' -Port $Port -TimeoutSeconds $TimeoutSeconds$startDockerFlag$noBuildFlag"
+    $command = "Set-Location '$Root'; .\scripts\dev\run_server.ps1 -ComposeFile '$ComposeFile' -HostAddress '$HostAddress' -Port $Port -TimeoutSeconds $TimeoutSeconds$startDockerFlag$noBuildFlag"
 
     Start-Process -FilePath powershell.exe `
         -ArgumentList @("-NoExit", "-ExecutionPolicy", "Bypass", "-Command", $command) `
