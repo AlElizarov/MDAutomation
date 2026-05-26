@@ -6,7 +6,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-$Root = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+$Root = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
 $VenvFullPath = Join-Path $Root $VenvPath
 $TempRoot = Join-Path ([System.IO.Path]::GetTempPath()) "MDAutomation-pip-$([System.Guid]::NewGuid().ToString('N'))"
 $TmpPath = Join-Path $TempRoot "tmp"
@@ -23,7 +23,7 @@ if (-not (Test-Path $RequirementsPath)) {
 
 try {
     New-Item -ItemType Directory -Force -Path $TmpPath, $DownloadPath | Out-Null
-    $WorkaroundPath = & (Join-Path $PSScriptRoot "ensure_python_workaround.ps1") -Root $TempRoot
+    $WorkaroundPath = & (Join-Path $Root "scripts\internal\ensure_python_workaround.ps1") -Root $TempRoot
 
     $env:PYTHONPATH = $WorkaroundPath
     $env:TEMP = $TmpPath

@@ -18,6 +18,7 @@ def test_lead_model_has_expected_columns() -> None:
         "preferred_contact_channel",
         "status",
         "created_at",
+        "updated_at",
     }
 
 
@@ -30,7 +31,6 @@ def test_lead_model_persists_valid_record() -> None:
             name="Alice",
             phone="+10000000000",
             preferred_contact_channel="telegram",
-            status="new",
         )
 
         session.add(lead)
@@ -38,7 +38,9 @@ def test_lead_model_persists_valid_record() -> None:
         session.refresh(lead)
 
         assert lead.id
+        assert lead.status == "created"
         assert lead.created_at is not None
+        assert lead.updated_at is not None
 
 
 def test_lead_model_rejects_missing_required_name() -> None:
@@ -50,7 +52,6 @@ def test_lead_model_rejects_missing_required_name() -> None:
             name=None,
             phone="+10000000000",
             preferred_contact_channel="telegram",
-            status="new",
         )
 
         session.add(lead)

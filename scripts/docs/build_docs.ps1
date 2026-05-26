@@ -5,11 +5,11 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-$Root = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+$Root = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
 $VenvPython = Join-Path $Root "$VenvPath\Scripts\python.exe"
 
 if (-not (Test-Path $VenvPython)) {
-    throw "Virtual environment not found. Run .\scripts\install_deps.ps1 first."
+    throw "Virtual environment not found. Run .\scripts\dev\install_deps.ps1 first."
 }
 
 Set-Location $Root

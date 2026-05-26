@@ -1,233 +1,157 @@
-# Online Consultation Platform
+# MDAutomation
 
-Backend platform for accepting, routing, and processing online consultation requests across multiple communication channels.
+Backend platform for accepting, storing, and processing online consultation
+requests across communication channels.
 
-## Overview
+## Contents
+
+- [Purpose](#purpose)
+- [Architecture](#architecture)
+- [Request Processing Flow](#request-processing-flow)
+- [Repository Structure](#repository-structure)
+- [Key Documentation](#key-documentation)
+- [Local Development](#local-development)
+- [Database Migrations](#database-migrations)
+- [Verification](#verification)
+- [Development Workflow](#development-workflow)
+
+## Purpose
+
+MDAutomation provides a unified backend for consultation request handling.
 
 The system is designed to:
 
-- accept consultation requests from landing pages and forms
-- route users into preferred communication channels
-- connect requests with messenger identities
-- support multi-channel onboarding flows
-- provide a unified backend for consultation operations
+- accept consultation requests from landing pages and forms;
+- validate and store lead data;
+- expose backend health and readiness checks;
+- keep business logic independent from transport channels;
+- prepare the platform for messenger integrations such as Telegram, VK, and MAX.
 
-Supported channels may include:
+## Architecture
 
-- Telegram
-- VK
-- MAX
-- future messenger integrations
-
-## Core Principles
-
-- unified backend architecture
-- channel-agnostic request handling
-- scalable onboarding flows
-- clean integration boundaries
-- AI-assisted development workflow
-
-## High-Level Architecture
+The application follows a layered backend architecture.
 
 ```text
 Landing Page / Form
         |
         v
-Backend API
+FastAPI Backend
         |
         v
-Request Processing
+Application Services
         |
         v
-Messenger Routing
+Persistence Layer
         |
         v
-Channel Binding
-        |
-        v
-Consultation Flow
+PostgreSQL
 ```
 
-## Request Flow
+Future messenger integrations are treated as adapters around the core backend:
 
 ```text
-User submits request
+Messenger Webhook
         |
         v
-Request is stored in backend
+Integration Adapter
         |
         v
-Backend generates channel-specific links
-        |
-        v
-User opens preferred messenger
-        |
-        v
-Messenger identity is linked to request
-        |
-        v
-Consultation flow starts
+Application Services
 ```
+
+The main architectural rule is that business behavior belongs in the service
+layer. HTTP handlers, messenger adapters, and database models should stay thin
+and focused on their own responsibilities.
+
+For detailed architectural rules, project layout, and long-term scalability
+goals, see [docs/architecture.md](docs/architecture.md).
+
+## Request Processing Flow
+
+The current request flow is:
+
+1. A user submits a consultation request.
+2. The backend receives and validates the request through the HTTP API.
+3. Application services apply the lead workflow.
+4. Lead data is stored in PostgreSQL.
+5. The backend exposes health and readiness information for local and container
+   environments.
+
+The platform is structured so future channel binding and messenger-specific
+flows can be added without moving business logic into integration code.
 
 ## Repository Structure
 
 ```text
-/docs
-  /tasks
-  architecture.md
-  api.md
-  flows.md
-  conventions.md
-
-/src
-/tests
+.
+|-- alembic/             Database migration runtime and versions
+|-- docs/                Project documentation
+|-- scripts/             Grouped local development, CI, Docker, and migration helpers
+|-- src/                 Application source code
+|   `-- app/
+|-- tests/               Automated tests
+|-- docker-compose.yml   Local backend and PostgreSQL environment
+|-- Dockerfile           Backend container image
+|-- mkdocs.yml           Documentation site configuration
+`-- requirements.txt     Python dependencies
 ```
 
-## Development Workflow
+## Key Documentation
 
-### Backend
+- [Architecture](docs/architecture.md) describes application layers,
+  responsibility boundaries, integration rules, and scalability goals.
+- [API](docs/api.md) describes the current FastAPI endpoints and interactive
+  API documentation locations.
+- [Database](docs/database.md) describes PostgreSQL, SQLAlchemy, Alembic,
+  persistence, schema management, and recovery commands.
+- [Conventions](docs/conventions.md) describes repository and development
+  conventions.
+- [Task documentation](docs/tasks) contains implementation context for tracked
+  project tasks.
 
-Install project dependencies locally:
+## Local Development
+
+Install project dependencies:
 
 ```powershell
-.\scripts\install_deps.ps1
+.\scripts\dev\install_deps.ps1
 ```
 
 Run the backend and PostgreSQL with Docker Compose:
 
 ```powershell
-.\scripts\run_server.ps1
+.\scripts\dev\run_server.ps1
 ```
-
-Run this command from a PowerShell session that has access to Docker Desktop.
 
 Open the Docker-backed backend in a separate PowerShell window:
 
 ```powershell
-.\scripts\run_server.ps1 -NewWindow
+.\scripts\dev\run_server.ps1 -NewWindow
 ```
 
-Run automated tests:
-
-```powershell
-.\scripts\test.ps1
-```
-
-Run the full local CI check:
-
-```powershell
-.\scripts\local-ci.ps1
-```
-
-Skip the Docker smoke test during local CI:
-
-```powershell
-.\scripts\local-ci.ps1 -SkipDocker
-```
-
-### Docker
-
-Docker Compose starts the backend together with PostgreSQL.
-
-Create a local `.env` file from `.env.example` and set a local database
-password:
-
-```powershell
-Copy-Item .env.example .env
-```
-
-Required PostgreSQL settings:
-
-```text
-POSTGRES_DB=mda
-POSTGRES_USER=mda_user
-POSTGRES_PASSWORD=<local-password>
-```
-
-`docker-compose.yml` builds `DATABASE_URL` for the backend from these
-PostgreSQL settings.
-
-Run the Docker smoke test:
-
-```powershell
-.\scripts\smoke-docker.ps1
-```
-
-The Docker smoke test also verifies PostgreSQL persistence. It applies database
-migrations, creates a marker record in the `leads` table, restarts the
-PostgreSQL container, recreates the Compose environment, and confirms that the
-record is still present.
-
-Start Docker Desktop before running the Docker smoke test:
-
-```powershell
-.\scripts\smoke-docker.ps1 -StartDockerDesktop
-```
-
-Skip the PostgreSQL persistence check:
-
-```powershell
-.\scripts\smoke-docker.ps1 -SkipPersistenceCheck
-```
-
-Keep the backend container running after the smoke test:
-
-```powershell
-.\scripts\smoke-docker.ps1 -KeepRunning
-```
-
-Run the backend manually with Docker Compose:
-
-```powershell
-docker compose up --build
-```
-
-Check the containerized backend health endpoint:
+Check the backend health endpoint:
 
 ```powershell
 curl http://localhost:8000/health
 ```
 
-Healthy response:
+Interactive FastAPI documentation is available from the running application:
 
-```json
-{
-  "status": "ok",
-  "database": "connected"
-}
-```
+- Swagger UI: `http://localhost:8000/docs`
+- ReDoc: `http://localhost:8000/redoc`
+- OpenAPI schema: `http://localhost:8000/openapi.json`
 
-If PostgreSQL is unavailable, the endpoint returns HTTP 503:
+See [docs/api.md](docs/api.md) for API details.
 
-```json
-{
-  "status": "degraded",
-  "database": "unavailable"
-}
-```
-
-Stop Docker Compose services:
-
-```powershell
-docker compose down --remove-orphans
-```
-
-Reset the local database completely:
-
-```powershell
-docker compose down --volumes --remove-orphans
-```
-
-### Database Migrations
+## Database Migrations
 
 Database schema changes are managed with Alembic.
 
-Apply migrations locally with a configured `DATABASE_URL` that points to a
-reachable PostgreSQL database:
+Apply migrations against a local PostgreSQL database:
 
 ```powershell
-$env:DATABASE_URL = "postgresql://mda_user:<local-password>@localhost:5432/mda"
-.\scripts\migrate.ps1
+$env:DATABASE_URL = "postgresql://mda_user:<local-password>@localhost:5432/mda_dev"
+.\scripts\db\migrate.ps1
 ```
 
 Apply migrations inside Docker Compose:
@@ -237,48 +161,44 @@ docker compose up -d
 docker compose exec backend python -m alembic upgrade head
 ```
 
-Create a new autogenerated migration after changing SQLAlchemy models:
+See [docs/database.md](docs/database.md) for the database schema, persistence
+model, migration workflow, rollback commands, and recovery details.
+
+## Verification
+
+Run automated tests:
 
 ```powershell
-.\.venv\Scripts\python.exe -m alembic revision --autogenerate -m "describe change"
+.\scripts\dev\test.ps1
 ```
 
-See the database documentation for persistence, schema, migration, and recovery
-details:
-
-```text
-docs/database.md
-```
-
-### Documentation
-
-Install documentation dependencies locally:
+Run the full local CI check:
 
 ```powershell
-.\scripts\install_deps.ps1
+.\scripts\ci\local-ci.ps1
 ```
 
-Build the MkDocs site:
+Build the documentation site:
 
 ```powershell
-.\scripts\build_docs.ps1
+.\scripts\docs\build_docs.ps1
 ```
 
-### Jira
+Run the Docker smoke test:
 
-Jira is used for:
-
-- roadmap
-- epics
-- backlog
-- project management
-
-### Repository Documentation
-
-Technical implementation context is stored in:
-
-```text
-/docs/tasks
+```powershell
+.\scripts\docker\smoke-docker.ps1
 ```
 
-Task files should be committed to the repository together with the codebase.
+## Development Workflow
+
+Jira is used for roadmap, epics, backlog, and project management.
+
+Technical implementation context is stored in [docs/tasks](docs/tasks).
+Task files should be committed together with the code they describe.
+
+Before opening a pull request, run:
+
+```powershell
+.\scripts\ci\local-ci.ps1
+```

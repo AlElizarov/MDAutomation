@@ -10,9 +10,10 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-$Root = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+$Root = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
 $ComposePath = Join-Path $Root $ComposeFile
 $PreviousAppPort = $env:APP_PORT
+$PreviousAppDatabaseName = $env:APP_DATABASE_NAME
 $LastDockerInfoError = ""
 
 if (-not (Test-Path $ComposePath)) {
@@ -74,6 +75,75 @@ function Invoke-Docker {
     Invoke-NativeCommand -FilePath "docker" -Arguments $Arguments
 }
 
+function Invoke-DockerOutput {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string[]]$Arguments
+    )
+
+    $previousErrorActionPreference = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+
+    try {
+        $output = docker @Arguments 2>&1
+        $exitCode = $LASTEXITCODE
+    }
+    finally {
+        $ErrorActionPreference = $previousErrorActionPreference
+    }
+
+    if ($exitCode -ne 0) {
+        throw "Command failed with exit code ${exitCode}: docker $($Arguments -join ' ')`n$($output -join [Environment]::NewLine)"
+    }
+
+    return ($output -join [Environment]::NewLine).Trim()
+}
+
+function Get-DotEnvValue {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Name
+    )
+
+    $envPath = Join-Path $Root ".env"
+
+    if (-not (Test-Path $envPath)) {
+        return $null
+    }
+
+    foreach ($line in Get-Content $envPath) {
+        if ($line -match "^\s*$Name\s*=\s*(.*)\s*$") {
+            return $Matches[1].Trim('"').Trim("'")
+        }
+    }
+
+    return $null
+}
+
+function Get-PostgresSetting {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Name,
+
+        [Parameter(Mandatory = $true)]
+        [string]$DefaultValue
+    )
+
+    $environmentValue = [Environment]::GetEnvironmentVariable($Name)
+
+    if (-not [string]::IsNullOrWhiteSpace($environmentValue)) {
+        return $environmentValue
+    }
+
+    $dotEnvValue = Get-DotEnvValue -Name $Name
+
+    if (-not [string]::IsNullOrWhiteSpace($dotEnvValue)) {
+        return $dotEnvValue
+    }
+
+    return $DefaultValue
+}
+
 function Wait-DockerReady {
     param([int]$TimeoutSeconds)
 
@@ -119,10 +189,98 @@ function Wait-HealthEndpoint {
     throw "Health endpoint did not return the expected response within $TimeoutSeconds seconds: $Url"
 }
 
+function Wait-PostgresReady {
+    param(
+        [int]$TimeoutSeconds,
+        [string]$PostgresUser
+    )
+
+    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+
+    do {
+        $previousErrorActionPreference = $ErrorActionPreference
+        $ErrorActionPreference = "Continue"
+
+        try {
+            docker compose -f $ComposeFile exec -T db pg_isready -U $PostgresUser -d postgres > $null 2> $null
+            $exitCode = $LASTEXITCODE
+        }
+        finally {
+            $ErrorActionPreference = $previousErrorActionPreference
+        }
+
+        if ($exitCode -eq 0) {
+            return
+        }
+
+        Write-Host "Waiting for PostgreSQL to become ready..."
+        Start-Sleep -Seconds 3
+    } while ((Get-Date) -lt $deadline)
+
+    throw "PostgreSQL did not become ready within $TimeoutSeconds seconds."
+}
+
+function Invoke-PostgresSql {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$PostgresUser,
+
+        [Parameter(Mandatory = $true)]
+        [string]$Sql
+    )
+
+    return Invoke-DockerOutput @(
+        "compose",
+        "-f",
+        $ComposeFile,
+        "exec",
+        "-T",
+        "db",
+        "psql",
+        "-v",
+        "ON_ERROR_STOP=1",
+        "-U",
+        $PostgresUser,
+        "-d",
+        "postgres",
+        "-t",
+        "-A",
+        "-c",
+        $Sql
+    )
+}
+
+function Ensure-DatabaseExists {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$DatabaseName,
+
+        [Parameter(Mandatory = $true)]
+        [string]$PostgresUser
+    )
+
+    if ($DatabaseName -notmatch "^[A-Za-z0-9_]+$") {
+        throw "Database name contains unsupported characters: $DatabaseName"
+    }
+
+    $exists = Invoke-PostgresSql `
+        -PostgresUser $PostgresUser `
+        -Sql "SELECT 1 FROM pg_database WHERE datname = '$DatabaseName';"
+
+    if ($exists -eq "1") {
+        return
+    }
+
+    Write-Host "Creating PostgreSQL database '$DatabaseName'..."
+    Invoke-PostgresSql `
+        -PostgresUser $PostgresUser `
+        -Sql "CREATE DATABASE `"$DatabaseName`";" | Out-Null
+}
+
 if ($NewWindow) {
     $startDockerFlag = if ($StartDockerDesktop) { " -StartDockerDesktop" } else { "" }
     $noBuildFlag = if ($NoBuild) { " -NoBuild" } else { "" }
-    $command = "Set-Location '$Root'; .\scripts\run_server.ps1 -ComposeFile '$ComposeFile' -HostAddress '$HostAddress' -Port $Port -TimeoutSeconds $TimeoutSeconds$startDockerFlag$noBuildFlag"
+    $command = "Set-Location '$Root'; .\scripts\dev\run_server.ps1 -ComposeFile '$ComposeFile' -HostAddress '$HostAddress' -Port $Port -TimeoutSeconds $TimeoutSeconds$startDockerFlag$noBuildFlag"
 
     Start-Process -FilePath powershell.exe `
         -ArgumentList @("-NoExit", "-ExecutionPolicy", "Bypass", "-Command", $command) `
@@ -156,20 +314,27 @@ if ($StartDockerDesktop) {
 
 try {
     $env:APP_PORT = $Port
+    $env:APP_DATABASE_NAME = "mda_dev"
     $healthUrl = "http://$HostAddress`:$Port/health"
+    $postgresUser = Get-PostgresSetting -Name "POSTGRES_USER" -DefaultValue "mda_user"
 
     Invoke-Docker @("--version")
     Invoke-Docker @("compose", "version")
 
     Wait-DockerReady -TimeoutSeconds $TimeoutSeconds
 
+    Write-Host "Starting PostgreSQL service..."
+    Invoke-Docker @("compose", "-f", $ComposeFile, "up", "-d", "db")
+    Wait-PostgresReady -TimeoutSeconds $TimeoutSeconds -PostgresUser $postgresUser
+    Ensure-DatabaseExists -DatabaseName $env:APP_DATABASE_NAME -PostgresUser $postgresUser
+
     if ($NoBuild) {
-        Write-Host "Starting Docker Compose services..."
-        Invoke-Docker @("compose", "-f", $ComposeFile, "up", "-d")
+        Write-Host "Starting backend service..."
+        Invoke-Docker @("compose", "-f", $ComposeFile, "up", "-d", "backend")
     }
     else {
-        Write-Host "Building and starting Docker Compose services..."
-        Invoke-Docker @("compose", "-f", $ComposeFile, "up", "-d", "--build")
+        Write-Host "Building and starting backend service..."
+        Invoke-Docker @("compose", "-f", $ComposeFile, "up", "-d", "--build", "backend")
     }
 
     Write-Host "Waiting for health endpoint: $healthUrl"
@@ -181,8 +346,10 @@ try {
     Write-Host "Backend is running at http://$HostAddress`:$Port"
     Write-Host "Swagger UI: http://$HostAddress`:$Port/docs"
     Write-Host "PostgreSQL is running in Docker Compose service: db"
+    Write-Host "Backend database: $env:APP_DATABASE_NAME"
     Write-Host "Stop services with: docker compose down --remove-orphans"
 }
 finally {
     $env:APP_PORT = $PreviousAppPort
+    $env:APP_DATABASE_NAME = $PreviousAppDatabaseName
 }

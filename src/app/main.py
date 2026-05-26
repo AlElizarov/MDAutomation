@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 
-from app.api import health
+from app.api import health, leads
 
 
 app = FastAPI(
@@ -11,3 +11,4 @@ app = FastAPI(
 
 
 app.include_router(health.router)
+app.include_router(leads.router)
