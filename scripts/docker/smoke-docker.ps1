@@ -11,6 +11,7 @@ $ErrorActionPreference = "Stop"
 
 $Root = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
 $ComposePath = Join-Path $Root $ComposeFile
+$PreviousAppDatabaseName = $env:APP_DATABASE_NAME
 
 if (-not (Test-Path $ComposePath)) {
     throw "Compose file not found: $ComposePath"
@@ -188,8 +189,77 @@ function Wait-HealthEndpoint {
     throw "Health endpoint did not return the expected response within $TimeoutSeconds seconds: $Url"
 }
 
+function Wait-PostgresReady {
+    param(
+        [int]$TimeoutSeconds,
+        [string]$PostgresUser
+    )
+
+    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+
+    do {
+        $previousErrorActionPreference = $ErrorActionPreference
+        $ErrorActionPreference = "Continue"
+
+        try {
+            docker compose -f $ComposeFile exec -T db pg_isready -U $PostgresUser -d postgres > $null 2> $null
+            $exitCode = $LASTEXITCODE
+        }
+        finally {
+            $ErrorActionPreference = $previousErrorActionPreference
+        }
+
+        if ($exitCode -eq 0) {
+            return
+        }
+
+        Write-Host "Waiting for PostgreSQL to become ready..."
+        Start-Sleep -Seconds 3
+    } while ((Get-Date) -lt $deadline)
+
+    throw "PostgreSQL did not become ready within $TimeoutSeconds seconds."
+}
+
+function Invoke-CreateLeadApi {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$HealthUrl
+    )
+
+    $leadsUrl = $HealthUrl -replace "/health$", "/leads"
+    $body = @{
+        name = "Smoke Test Lead"
+        phone = "+10000000000"
+        preferred_contact_channel = "telegram"
+    } | ConvertTo-Json
+
+    try {
+        $response = Invoke-RestMethod `
+            -Method Post `
+            -Uri $leadsUrl `
+            -ContentType "application/json" `
+            -Body $body `
+            -TimeoutSec 10
+    }
+    catch {
+        throw "Lead creation API smoke request failed: $($_.Exception.Message)"
+    }
+
+    if ([string]::IsNullOrWhiteSpace($response.lead_id)) {
+        throw "Lead creation API response did not include lead_id."
+    }
+
+    if ($response.status -ne "created") {
+        throw "Lead creation API response returned unexpected status: $($response.status)"
+    }
+
+    return $response.lead_id
+}
+
 function Invoke-PostgresSql {
     param(
+        [string]$DatabaseName = $PostgresDb,
+
         [Parameter(Mandatory = $true)]
         [string]$Sql
     )
@@ -205,12 +275,50 @@ function Invoke-PostgresSql {
         "-U",
         $PostgresUser,
         "-d",
-        $PostgresDb,
+        $DatabaseName,
         "-t",
         "-A",
         "-c",
         $Sql
     )
+}
+
+function Assert-ValidDatabaseName {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$DatabaseName
+    )
+
+    if ($DatabaseName -notmatch "^[A-Za-z0-9_]+$") {
+        throw "Database name contains unsupported characters: $DatabaseName"
+    }
+}
+
+function New-TestDatabase {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$DatabaseName
+    )
+
+    Assert-ValidDatabaseName -DatabaseName $DatabaseName
+
+    Write-Host "Creating smoke test database '$DatabaseName'..."
+    Invoke-PostgresSql -DatabaseName "postgres" -Sql "CREATE DATABASE `"$DatabaseName`";" | Out-Null
+}
+
+function Remove-TestDatabase {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$DatabaseName
+    )
+
+    Assert-ValidDatabaseName -DatabaseName $DatabaseName
+
+    Write-Host "Dropping smoke test database '$DatabaseName'..."
+    Invoke-PostgresSql `
+        -DatabaseName "postgres" `
+        -Sql "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '$DatabaseName' AND pid <> pg_backend_pid();" | Out-Null
+    Invoke-PostgresSql -DatabaseName "postgres" -Sql "DROP DATABASE IF EXISTS `"$DatabaseName`";" | Out-Null
 }
 
 function Assert-PersistenceRecordExists {
@@ -266,50 +374,56 @@ Invoke-Docker @("compose", "version")
 
 Wait-DockerReady -TimeoutSeconds $TimeoutSeconds
 
-$PostgresDb = Get-PostgresSetting -Name "POSTGRES_DB" -DefaultValue "mda"
+$PostgresDb = "mda_test"
 $PostgresUser = Get-PostgresSetting -Name "POSTGRES_USER" -DefaultValue "mda_user"
 $smokePassed = $false
 
 try {
+    $env:APP_DATABASE_NAME = $PostgresDb
+
     Write-Host "Cleaning up existing Docker Compose services..."
-    Invoke-Docker @("compose", "down", "--remove-orphans")
+    Invoke-Docker @("compose", "-f", $ComposeFile, "down", "--remove-orphans")
 
     Write-Host "Building Docker image..."
-    Invoke-Docker @("compose", "build")
+    Invoke-Docker @("compose", "-f", $ComposeFile, "build")
 
-    Write-Host "Starting Docker Compose services..."
-    Invoke-Docker @("compose", "up", "-d")
+    Write-Host "Starting PostgreSQL service..."
+    Invoke-Docker @("compose", "-f", $ComposeFile, "up", "-d", "db")
+    Wait-PostgresReady -TimeoutSeconds $TimeoutSeconds -PostgresUser $PostgresUser
+    Remove-TestDatabase -DatabaseName $PostgresDb
+    New-TestDatabase -DatabaseName $PostgresDb
+
+    Write-Host "Starting backend service with database '$PostgresDb'..."
+    Invoke-Docker @("compose", "-f", $ComposeFile, "up", "-d", "backend")
 
     Write-Host "Waiting for health endpoint: $HealthUrl"
     Wait-HealthEndpoint -Url $HealthUrl -TimeoutSeconds $TimeoutSeconds
 
     Write-Host "Applying database migrations..."
-    Invoke-Docker @("compose", "exec", "-T", "backend", "python", "-m", "alembic", "upgrade", "head")
+    Invoke-Docker @("compose", "-f", $ComposeFile, "exec", "-T", "backend", "python", "-m", "alembic", "upgrade", "head")
     Assert-PostgresTableExists -TableName "leads"
 
     if ($SkipPersistenceCheck) {
         Write-Host "Skipping PostgreSQL persistence check."
     }
     else {
-        $recordId = [System.Guid]::NewGuid().ToString("N")
-
-        Write-Host "Creating lead persistence smoke record..."
-        Invoke-PostgresSql -Sql "INSERT INTO leads (id, name, phone, preferred_contact_channel, status) VALUES ('$recordId', 'Smoke Test Lead', '+10000000000', 'telegram', 'new');"
+        Write-Host "Creating lead through POST /leads..."
+        $recordId = Invoke-CreateLeadApi -HealthUrl $HealthUrl
         Assert-PersistenceRecordExists -RecordId $recordId
 
         Write-Host "Restarting PostgreSQL service and verifying persisted data..."
-        Invoke-Docker @("compose", "restart", "db")
+        Invoke-Docker @("compose", "-f", $ComposeFile, "restart", "db")
         Wait-HealthEndpoint -Url $HealthUrl -TimeoutSeconds $TimeoutSeconds
         Assert-PersistenceRecordExists -RecordId $recordId
 
         Write-Host "Recreating Docker Compose environment and verifying persisted data..."
-        Invoke-Docker @("compose", "down", "--remove-orphans")
-        Invoke-Docker @("compose", "up", "-d")
+        Invoke-Docker @("compose", "-f", $ComposeFile, "down", "--remove-orphans")
+        Invoke-Docker @("compose", "-f", $ComposeFile, "up", "-d")
         Wait-HealthEndpoint -Url $HealthUrl -TimeoutSeconds $TimeoutSeconds
         Assert-PersistenceRecordExists -RecordId $recordId
 
         Write-Host "Recreating backend container and verifying persisted data..."
-        Invoke-Docker @("compose", "up", "-d", "--force-recreate", "backend")
+        Invoke-Docker @("compose", "-f", $ComposeFile, "up", "-d", "--force-recreate", "backend")
         Wait-HealthEndpoint -Url $HealthUrl -TimeoutSeconds $TimeoutSeconds
         Assert-PersistenceRecordExists -RecordId $recordId
     }
@@ -319,19 +433,32 @@ try {
 }
 catch {
     Write-Host "Docker smoke test failed. Docker Compose status:"
-    & docker compose ps
+    & docker compose -f $ComposeFile ps
 
     Write-Host "Backend logs:"
-    & docker compose logs backend --tail 100
+    & docker compose -f $ComposeFile logs backend --tail 100
 
     throw
 }
 finally {
+    Write-Host "Cleaning up smoke test database..."
+
+    try {
+        Invoke-Docker @("compose", "-f", $ComposeFile, "stop", "backend")
+        Wait-PostgresReady -TimeoutSeconds $TimeoutSeconds -PostgresUser $PostgresUser
+        Remove-TestDatabase -DatabaseName $PostgresDb
+    }
+    catch {
+        Write-Host "Smoke test database cleanup failed: $($_.Exception.Message)"
+    }
+
     if ($KeepRunning -and $smokePassed) {
-        Write-Host "Keeping Docker Compose services running."
+        Write-Host "Keeping PostgreSQL service running after cleaning test database."
     }
     else {
         Write-Host "Stopping Docker Compose services..."
-        Invoke-Docker @("compose", "down", "--remove-orphans")
+        Invoke-Docker @("compose", "-f", $ComposeFile, "down", "--remove-orphans")
     }
+
+    $env:APP_DATABASE_NAME = $PreviousAppDatabaseName
 }

@@ -150,7 +150,7 @@ Database schema changes are managed with Alembic.
 Apply migrations against a local PostgreSQL database:
 
 ```powershell
-$env:DATABASE_URL = "postgresql://mda_user:<local-password>@localhost:5432/mda"
+$env:DATABASE_URL = "postgresql://mda_user:<local-password>@localhost:5432/mda_dev"
 .\scripts\db\migrate.ps1
 ```
 

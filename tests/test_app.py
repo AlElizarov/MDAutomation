@@ -71,3 +71,5 @@ def test_openapi_schema_generated_correctly() -> None:
     assert schema["info"]["title"] == "MDAutomation API"
     assert "/health" in schema["paths"]
     assert "get" in schema["paths"]["/health"]
+    assert "/leads" in schema["paths"]
+    assert "post" in schema["paths"]["/leads"]

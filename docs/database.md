@@ -14,25 +14,60 @@ db
 ```
 
 The backend receives its database connection string through `DATABASE_URL`.
-In Docker Compose, this value is built from the PostgreSQL settings:
+In Docker Compose, this value is built from the PostgreSQL user/password and
+the application database name:
 
 ```text
-POSTGRES_DB=mda
+POSTGRES_DB=mda_dev
 POSTGRES_USER=mda_user
 POSTGRES_PASSWORD=<local-password>
+APP_DATABASE_NAME=mda_dev
 ```
 
 Docker Compose connection string:
 
 ```text
-postgresql://mda_user:<local-password>@db:5432/mda
+postgresql://mda_user:<local-password>@db:5432/mda_dev
 ```
+
+`POSTGRES_DB` is used by the PostgreSQL container during initial volume
+creation. `APP_DATABASE_NAME` controls which database the backend connects to.
+Local development uses `mda_dev`; Docker smoke tests use `mda_test`.
 
 For local host access, use `localhost` instead of `db`:
 
 ```powershell
-$env:DATABASE_URL = "postgresql://mda_user:<local-password>@localhost:5432/mda"
+$env:DATABASE_URL = "postgresql://mda_user:<local-password>@localhost:5432/mda_dev"
 ```
+
+Open an interactive `psql` session inside the Docker Compose PostgreSQL
+container for the local development database:
+
+```powershell
+.\scripts\db\psql.ps1
+```
+
+By default, the script opens:
+
+```text
+mda_dev
+```
+
+Open the test database instead:
+
+```powershell
+.\scripts\db\psql.ps1 -TestDatabase
+```
+
+This opens:
+
+```text
+mda_test
+```
+
+The script starts Docker Desktop if needed, starts the `db` service, waits for
+PostgreSQL readiness, creates the target database if it does not exist, and then
+opens `psql`.
 
 ## Persistent Storage
 
@@ -97,10 +132,11 @@ database schema during autogeneration.
 | --- | --- | --- | --- |
 | `id` | string | yes | Primary key. Defaults to a generated UUID string in the ORM model. |
 | `name` | string | yes | Lead name. |
-| `phone` | string | yes | Lead phone number. |
+| `phone` | string | yes | Lead phone number. Maximum length is 32 characters. |
 | `preferred_contact_channel` | string | yes | Requested communication channel. |
-| `status` | string | yes | Lead lifecycle status. Defaults to `new` in the ORM model. |
+| `status` | string | yes | Lead lifecycle status. Newly created Leads receive `created`. |
 | `created_at` | timestamp | yes | Database-generated creation timestamp. |
+| `updated_at` | timestamp | yes | Database-generated update timestamp. |
 
 ## Migrations
 
@@ -124,10 +160,16 @@ The first migration creates the `leads` table:
 alembic/versions/20260525_0001_create_leads_table.py
 ```
 
+The second migration updates the table for the Lead creation API flow:
+
+```text
+alembic/versions/20260525_0002_update_leads_for_creation_flow.py
+```
+
 Apply migrations locally:
 
 ```powershell
-$env:DATABASE_URL = "postgresql://mda_user:<local-password>@localhost:5432/mda"
+$env:DATABASE_URL = "postgresql://mda_user:<local-password>@localhost:5432/mda_dev"
 .\scripts\db\migrate.ps1
 ```
 
@@ -188,11 +230,14 @@ Run the Docker smoke test:
 The Docker smoke test:
 
 - builds the backend image;
-- starts PostgreSQL and the backend;
+- starts PostgreSQL with the persistent Docker volume;
+- recreates the isolated `mda_test` database;
+- starts the backend against `mda_test`;
 - waits for `/health`;
 - applies `alembic upgrade head` inside the backend container;
 - verifies that the `leads` table exists;
-- creates a marker record in the `leads` table;
+- creates a marker record through `POST /leads`;
 - verifies data survives PostgreSQL restart;
 - verifies data survives Docker Compose recreation;
 - verifies data survives backend container recreation.
+- drops the `mda_test` database during cleanup.
