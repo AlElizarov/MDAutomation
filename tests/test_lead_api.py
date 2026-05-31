@@ -7,7 +7,7 @@ from app import main
 from app.api import leads as leads_api
 from app.db import session as db_session
 from app.db.base import Base
-from app.db.models import Lead  # noqa: F401
+from app.db.models import Lead, Payment  # noqa: F401
 
 
 client = TestClient(main.app)
@@ -43,14 +43,16 @@ def test_create_lead_returns_created_response_and_persists_record() -> None:
                 "name": " Anna Ivanova ",
                 "phone": "+79990000000",
                 "preferred_contact_channel": "telegram",
+                "amount": 99000,
+                "currency": "RUB",
             },
         )
 
         assert response.status_code == 201
         response_body = response.json()
-        assert set(response_body.keys()) == {"lead_id", "status"}
+        assert set(response_body.keys()) == {"lead_id", "payment_url"}
         assert response_body["lead_id"]
-        assert response_body["status"] == "created"
+        assert response_body["payment_url"].startswith("https://test-payment-provider/pay/test_pay_")
 
         with engine.connect() as connection:
             persisted = connection.execute(
@@ -67,7 +69,7 @@ def test_create_lead_returns_created_response_and_persists_record() -> None:
         assert persisted["name"] == "Anna Ivanova"
         assert persisted["phone"] == "+79990000000"
         assert persisted["preferred_contact_channel"] == "telegram"
-        assert persisted["status"] == "created"
+        assert persisted["status"] == "payment_pending"
         assert persisted["created_at"] is not None
         assert persisted["updated_at"] is not None
     finally:
@@ -84,6 +86,8 @@ def test_create_lead_rejects_empty_name() -> None:
                 "name": " ",
                 "phone": "+79990000000",
                 "preferred_contact_channel": "telegram",
+                "amount": 99000,
+                "currency": "RUB",
             },
         )
     finally:
@@ -102,6 +106,8 @@ def test_create_lead_rejects_invalid_phone() -> None:
                 "name": "Anna Ivanova",
                 "phone": "79990000000",
                 "preferred_contact_channel": "telegram",
+                "amount": 99000,
+                "currency": "RUB",
             },
         )
     finally:
@@ -120,6 +126,8 @@ def test_create_lead_rejects_invalid_channel() -> None:
                 "name": "Anna Ivanova",
                 "phone": "+79990000000",
                 "preferred_contact_channel": "email",
+                "amount": 99000,
+                "currency": "RUB",
             },
         )
     finally:
@@ -148,6 +156,8 @@ def test_create_lead_returns_internal_server_error_when_persistence_fails(monkey
                 "name": "Anna Ivanova",
                 "phone": "+79990000000",
                 "preferred_contact_channel": "telegram",
+                "amount": 99000,
+                "currency": "RUB",
             },
         )
 

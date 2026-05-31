@@ -17,11 +17,11 @@ def create_lead_endpoint(
     db: Annotated[Session, Depends(get_db)],
 ) -> LeadCreateResponse:
     try:
-        lead = create_lead(db, lead_create)
+        result = create_lead(db, lead_create)
     except LeadCreationError as exc:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to create lead.",
         ) from exc
 
-    return LeadCreateResponse(lead_id=lead.id, status=lead.status)
+    return LeadCreateResponse(lead_id=result.lead.id, payment_url=result.payment_url)

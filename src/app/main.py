@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 
-from app.api import health, leads
+from app.api import health, leads, payments_webhooks
 
 
 app = FastAPI(
@@ -12,3 +12,4 @@ app = FastAPI(
 
 app.include_router(health.router)
 app.include_router(leads.router)
+app.include_router(payments_webhooks.router)

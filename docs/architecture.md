@@ -49,6 +49,7 @@ src/app/
 |-- api/
 |   |-- health.py
 |   |-- leads.py
+|   |-- payments_webhooks.py
 |   `-- bindings.py
 |
 |-- core/
@@ -60,15 +61,23 @@ src/app/
 |   |-- session.py
 |   `-- models/
 |       |-- lead.py
+|       |-- payment.py
 |       `-- binding.py
 |
 |-- schemas/
 |   |-- lead.py
+|   |-- payment.py
 |   `-- binding.py
 |
 |-- services/
 |   |-- lead_service.py
+|   |-- payment_service.py
 |   `-- binding_service.py
+|
+|-- payments/
+|   `-- providers/
+|       |-- base.py
+|       `-- test_provider.py
 |
 |-- integrations/
 |   |-- telegram/
@@ -87,6 +96,7 @@ src/app/
 | `db/models/` | SQLAlchemy ORM persistence models |
 | `schemas/` | Pydantic request/response schemas |
 | `integrations/` | External messenger adapters and webhook handlers |
+| `payments/providers/` | Payment provider adapter interfaces and implementations |
 | `core/` | Infrastructure configuration, settings, logging |
 | `utils/` | Shared utility helpers |
 | `tests/` | Automated tests |
@@ -110,6 +120,10 @@ Route handlers should:
 
 Messenger integrations should act as transport adapters only.
 
+Payment webhook routes follow the same rule: they validate transport payloads,
+normalize provider identifiers, and call services. Payment lifecycle decisions
+must stay in `services/`.
+
 ### Integrations as Adapters
 
 Telegram, VK, and MAX integrations are considered channel adapters.
@@ -127,6 +141,17 @@ They must not contain:
 - persistence orchestration.
 
 Core business behavior must remain channel-independent.
+
+### Payment Providers as Adapters
+
+Payment providers are integrated through adapter classes. `POST /leads` creates
+a local Payment, calls `PaymentProviderAdapter.create_payment(...)`, stores the
+returned `provider_payment_id` and `payment_url`, and only then returns the URL
+to the frontend.
+
+The test provider is intentionally implemented through the same boundary as
+future real providers. Its `provider_payment_id` is distinct from internal
+`Payment.id`.
 
 ### Persistence Layer
 
@@ -206,6 +231,7 @@ The structure is intentionally designed to support:
 The backend remains the single source of truth for:
 
 - lead lifecycle;
+- payment lifecycle;
 - bindings;
 - statuses;
 - workflow orchestration.

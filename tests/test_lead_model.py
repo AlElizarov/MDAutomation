@@ -1,4 +1,5 @@
 from app.db.base import Base
+from app.db.models import Payment  # noqa: F401
 from app.db.models.lead import Lead
 from sqlalchemy import create_engine
 from sqlalchemy.exc import IntegrityError

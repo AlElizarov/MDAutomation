@@ -13,6 +13,8 @@ class LeadCreate(BaseModel):
     name: str = Field(..., max_length=255)
     phone: str = Field(..., max_length=32)
     preferred_contact_channel: PreferredContactChannel
+    amount: int = Field(..., gt=0)
+    currency: str = Field(..., max_length=8)
 
     @field_validator("name")
     @classmethod
@@ -37,7 +39,20 @@ class LeadCreate(BaseModel):
 
         return normalized_value
 
+    @field_validator("currency")
+    @classmethod
+    def validate_currency(cls, value: str) -> str:
+        normalized_value = value.strip()
+
+        if normalized_value != normalized_value.upper():
+            raise ValueError("currency must be uppercase")
+
+        if not normalized_value.isalpha():
+            raise ValueError("currency must contain only letters")
+
+        return normalized_value
+
 
 class LeadCreateResponse(BaseModel):
     lead_id: str
-    status: str
+    payment_url: str

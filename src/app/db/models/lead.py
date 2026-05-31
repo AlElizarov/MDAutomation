@@ -2,7 +2,7 @@ from datetime import datetime
 from uuid import uuid4
 
 from sqlalchemy import DateTime, String, func
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
 
@@ -31,3 +31,5 @@ class Lead(Base):
         server_default=func.now(),
         onupdate=func.now(),
     )
+
+    payments = relationship("Payment", back_populates="lead")
