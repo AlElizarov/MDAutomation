@@ -124,6 +124,11 @@ Payment webhook routes follow the same rule: they validate transport payloads,
 normalize provider identifiers, and call services. Payment lifecycle decisions
 must stay in `services/`.
 
+Webhook idempotency and strict payment status transition validation are not part
+of the current test provider implementation. They should be introduced with real
+provider integrations, where retry semantics, signatures, provider event ids,
+and terminal state rules are known.
+
 ### Integrations as Adapters
 
 Telegram, VK, and MAX integrations are considered channel adapters.
@@ -152,6 +157,10 @@ to the frontend.
 The test provider is intentionally implemented through the same boundary as
 future real providers. Its `provider_payment_id` is distinct from internal
 `Payment.id`.
+
+Provider selection currently uses the test provider directly from the Lead
+creation service. This should move behind provider factory/configuration when
+additional providers are introduced.
 
 ### Persistence Layer
 

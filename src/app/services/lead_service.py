@@ -4,9 +4,9 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.db.models.lead import Lead
+from app.payments.providers.test_provider import TestPaymentProviderAdapter
 from app.schemas.lead import LeadCreate
 from app.services.payment_service import PaymentCreationError, create_payment
-from app.payments.providers.test_provider import TestPaymentProviderAdapter
 
 
 class LeadCreationError(RuntimeError):
@@ -36,6 +36,7 @@ def create_lead(db: Session, lead_create: LeadCreate) -> LeadCreationResult:
             lead_id=lead.id,
             amount=lead_create.amount,
             currency=lead_create.currency,
+            # TODO: Move provider selection behind a factory/config boundary when real providers are added.
             provider_adapter=TestPaymentProviderAdapter(),
         )
 
@@ -46,8 +47,5 @@ def create_lead(db: Session, lead_create: LeadCreate) -> LeadCreationResult:
     except (SQLAlchemyError, PaymentCreationError) as exc:
         db.rollback()
         raise LeadCreationError("Failed to create lead.") from exc
-
-    if payment.payment_url is None:
-        raise LeadCreationError("Payment URL was not initialized.")
 
     return LeadCreationResult(lead=lead, payment_url=payment.payment_url)

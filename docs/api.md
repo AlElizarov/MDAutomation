@@ -171,6 +171,11 @@ Webhook behavior:
 - `provider_payment_id` is the external provider identifier. It is distinct
   from internal `Payment.id`.
 
+Webhook idempotency and strict invalid status transition handling are deferred
+to future real payment provider integration tasks. The current test provider
+implementation accepts normalized succeeded/failed events and applies the
+requested lifecycle state directly.
+
 Webhook errors:
 
 - unknown event returns `422 Unprocessable Entity`;

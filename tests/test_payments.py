@@ -148,6 +148,44 @@ def test_create_lead_rolls_back_when_provider_initialization_fails(monkeypatch) 
         main.app.dependency_overrides.clear()
 
 
+def test_create_lead_rolls_back_when_provider_returns_missing_payment_url(monkeypatch) -> None:
+    class IncompleteProviderAdapter:
+        provider = "test"
+
+        def create_payment(self, *, payment_id: str, amount: int, currency: str) -> ProviderPayment:
+            return ProviderPayment(
+                provider_payment_id=f"test_pay_{payment_id.replace('-', '')}",
+                payment_url="",
+            )
+
+    engine, override_get_db = create_test_session()
+    main.app.dependency_overrides[db_session.get_db] = override_get_db
+    monkeypatch.setattr("app.services.lead_service.TestPaymentProviderAdapter", IncompleteProviderAdapter)
+
+    try:
+        response = client.post(
+            "/leads",
+            json={
+                "name": "Anna Ivanova",
+                "phone": "+79990000000",
+                "preferred_contact_channel": "telegram",
+                "amount": 99000,
+                "currency": "RUB",
+            },
+        )
+
+        assert response.status_code == 500
+
+        with engine.connect() as connection:
+            lead_count = connection.execute(text("SELECT COUNT(*) FROM leads")).scalar_one()
+            payment_count = connection.execute(text("SELECT COUNT(*) FROM payments")).scalar_one()
+
+        assert lead_count == 0
+        assert payment_count == 0
+    finally:
+        main.app.dependency_overrides.clear()
+
+
 def test_successful_webhook_marks_payment_paid_and_updates_lead() -> None:
     engine, override_get_db = create_test_session()
     main.app.dependency_overrides[db_session.get_db] = override_get_db

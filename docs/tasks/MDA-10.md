@@ -293,6 +293,11 @@ Webhook errors:
 - unknown `provider_payment_id` returns `404 Not Found`;
 - persistence error returns `500 Internal Server Error`.
 
+Webhook idempotency and strict invalid payment status transition rules are
+intentionally deferred. This task only implements normalized test provider
+events. Real provider integrations must define retry handling, provider event
+identity, terminal status behavior, and invalid transition responses.
+
 ---
 
 ## Payment Provider Adapter Requirements
@@ -337,6 +342,10 @@ payment_url = https://test-payment-provider/pay/test_pay_2e7d4f8e1c854df09f159c7
 
 The adapter abstraction is required even though this task only implements a test
 provider. Future real providers must be integrated through the same boundary.
+
+Provider selection may be hardcoded to the test provider in this task. A future
+provider factory or configuration-driven provider resolver should be introduced
+when real providers are added.
 
 ---
 

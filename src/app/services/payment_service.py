@@ -46,12 +46,17 @@ def create_payment(
             currency=payment.currency,
         )
 
+        if not provider_payment.provider_payment_id or not provider_payment.payment_url:
+            raise PaymentCreationError("Provider payment response was incomplete.")
+
         payment.provider_payment_id = provider_payment.provider_payment_id
         payment.payment_url = provider_payment.payment_url
         payment.status = "pending"
         db.flush()
     except SQLAlchemyError as exc:
         raise PaymentCreationError("Failed to create payment.") from exc
+    except PaymentCreationError:
+        raise
     except Exception as exc:
         raise PaymentCreationError("Failed to initialize provider payment.") from exc
 
