@@ -110,7 +110,8 @@ src/app/db/
 |-- session.py
 `-- models/
     |-- __init__.py
-    `-- lead.py
+    |-- lead.py
+    `-- payment.py
 ```
 
 Responsibilities:
@@ -120,6 +121,7 @@ Responsibilities:
 | `base.py` | Defines the shared SQLAlchemy declarative `Base` and imports models for metadata registration. |
 | `session.py` | Creates the SQLAlchemy engine, session factory, FastAPI DB dependency, and readiness check. |
 | `models/lead.py` | Defines the persistent `Lead` ORM model. |
+| `models/payment.py` | Defines the persistent `Payment` ORM model. |
 
 Alembic uses `Base.metadata` to compare application models with the actual
 database schema during autogeneration.
@@ -134,9 +136,26 @@ database schema during autogeneration.
 | `name` | string | yes | Lead name. |
 | `phone` | string | yes | Lead phone number. Maximum length is 32 characters. |
 | `preferred_contact_channel` | string | yes | Requested communication channel. |
-| `status` | string | yes | Lead lifecycle status. Newly created Leads receive `created`. |
+| `status` | string | yes | Lead lifecycle status. Leads created through `POST /leads` move to `payment_pending`; successfully paid Leads move to `paid`. |
 | `created_at` | timestamp | yes | Database-generated creation timestamp. |
 | `updated_at` | timestamp | yes | Database-generated update timestamp. |
+
+### `payments`
+
+| Column | Type | Required | Notes |
+| --- | --- | --- | --- |
+| `id` | string | yes | Internal primary key. Defaults to a generated UUID string in the ORM model. |
+| `lead_id` | string | yes | Foreign key to `leads.id`. |
+| `provider` | string | yes | Payment provider identifier, initially `test`. |
+| `provider_payment_id` | string | no | External provider payment identifier. It is distinct from internal `payments.id`. |
+| `amount` | integer | yes | Payment amount in minimal currency units. |
+| `currency` | string | yes | Uppercase currency code, maximum 8 characters. |
+| `status` | string | yes | Payment lifecycle status: `created`, `pending`, `paid`, or `failed` in the current implementation. |
+| `payment_url` | string | no | Redirect URL returned by the provider adapter. |
+| `created_at` | timestamp | yes | Database-generated creation timestamp. |
+| `updated_at` | timestamp | yes | Database-generated update timestamp. |
+| `paid_at` | timestamp | no | Set when a payment becomes `paid`. |
+| `raw_payload` | JSON | no | Last stored webhook payload from the provider. |
 
 ## Migrations
 
@@ -164,6 +183,12 @@ The second migration updates the table for the Lead creation API flow:
 
 ```text
 alembic/versions/20260525_0002_update_leads_for_creation_flow.py
+```
+
+The third migration creates the `payments` table:
+
+```text
+alembic/versions/20260529_0003_create_payments_table.py
 ```
 
 Apply migrations locally:
@@ -235,8 +260,9 @@ The Docker smoke test:
 - starts the backend against `mda_test`;
 - waits for `/health`;
 - applies `alembic upgrade head` inside the backend container;
-- verifies that the `leads` table exists;
+- verifies that the `leads` and `payments` tables exist;
 - creates a marker record through `POST /leads`;
+- verifies that the related Payment is persisted;
 - verifies data survives PostgreSQL restart;
 - verifies data survives Docker Compose recreation;
 - verifies data survives backend container recreation.

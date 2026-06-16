@@ -73,3 +73,5 @@ def test_openapi_schema_generated_correctly() -> None:
     assert "get" in schema["paths"]["/health"]
     assert "/leads" in schema["paths"]
     assert "post" in schema["paths"]["/leads"]
+    assert "/payments/webhooks/test-payment-provider" in schema["paths"]
+    assert "post" in schema["paths"]["/payments/webhooks/test-payment-provider"]

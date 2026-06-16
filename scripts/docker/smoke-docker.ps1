@@ -231,6 +231,8 @@ function Invoke-CreateLeadApi {
         name = "Smoke Test Lead"
         phone = "+10000000000"
         preferred_contact_channel = "telegram"
+        amount = 99000
+        currency = "RUB"
     } | ConvertTo-Json
 
     try {
@@ -249,11 +251,14 @@ function Invoke-CreateLeadApi {
         throw "Lead creation API response did not include lead_id."
     }
 
-    if ($response.status -ne "created") {
-        throw "Lead creation API response returned unexpected status: $($response.status)"
+    if ([string]::IsNullOrWhiteSpace($response.payment_url)) {
+        throw "Lead creation API response did not include payment_url."
     }
 
-    return $response.lead_id
+    return @{
+        LeadId = $response.lead_id
+        PaymentUrl = $response.payment_url
+    }
 }
 
 function Invoke-PostgresSql {
@@ -334,6 +339,39 @@ function Assert-PersistenceRecordExists {
     }
 }
 
+function Assert-PaymentRecordExists {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$LeadId,
+
+        [Parameter(Mandatory = $true)]
+        [string]$PaymentUrl
+    )
+
+    $result = Invoke-PostgresSql -Sql "SELECT provider_payment_id || '|' || payment_url FROM payments WHERE lead_id = '$LeadId' AND status = 'pending';"
+
+    if ([string]::IsNullOrWhiteSpace($result)) {
+        throw "Expected payment persistence smoke record for lead '$LeadId' to exist, but query returned '$result'."
+    }
+
+    $parts = $result -split "\|", 2
+    $providerPaymentId = $parts[0]
+    $persistedPaymentUrl = $parts[1]
+    $expectedPaymentUrl = "https://test-payment-provider/pay/$providerPaymentId"
+
+    if ([string]::IsNullOrWhiteSpace($providerPaymentId)) {
+        throw "Payment persistence smoke record for lead '$LeadId' did not include provider_payment_id."
+    }
+
+    if ($persistedPaymentUrl -ne $expectedPaymentUrl) {
+        throw "Persisted payment_url '$persistedPaymentUrl' did not match expected URL '$expectedPaymentUrl'."
+    }
+
+    if ($PaymentUrl -ne $expectedPaymentUrl) {
+        throw "Lead creation API payment_url '$PaymentUrl' did not match expected URL '$expectedPaymentUrl'."
+    }
+}
+
 function Assert-PostgresTableExists {
     param(
         [Parameter(Mandatory = $true)]
@@ -402,30 +440,37 @@ try {
     Write-Host "Applying database migrations..."
     Invoke-Docker @("compose", "-f", $ComposeFile, "exec", "-T", "backend", "python", "-m", "alembic", "upgrade", "head")
     Assert-PostgresTableExists -TableName "leads"
+    Assert-PostgresTableExists -TableName "payments"
 
     if ($SkipPersistenceCheck) {
         Write-Host "Skipping PostgreSQL persistence check."
     }
     else {
         Write-Host "Creating lead through POST /leads..."
-        $recordId = Invoke-CreateLeadApi -HealthUrl $HealthUrl
+        $leadResponse = Invoke-CreateLeadApi -HealthUrl $HealthUrl
+        $recordId = $leadResponse.LeadId
+        $paymentUrl = $leadResponse.PaymentUrl
         Assert-PersistenceRecordExists -RecordId $recordId
+        Assert-PaymentRecordExists -LeadId $recordId -PaymentUrl $paymentUrl
 
         Write-Host "Restarting PostgreSQL service and verifying persisted data..."
         Invoke-Docker @("compose", "-f", $ComposeFile, "restart", "db")
         Wait-HealthEndpoint -Url $HealthUrl -TimeoutSeconds $TimeoutSeconds
         Assert-PersistenceRecordExists -RecordId $recordId
+        Assert-PaymentRecordExists -LeadId $recordId -PaymentUrl $paymentUrl
 
         Write-Host "Recreating Docker Compose environment and verifying persisted data..."
         Invoke-Docker @("compose", "-f", $ComposeFile, "down", "--remove-orphans")
         Invoke-Docker @("compose", "-f", $ComposeFile, "up", "-d")
         Wait-HealthEndpoint -Url $HealthUrl -TimeoutSeconds $TimeoutSeconds
         Assert-PersistenceRecordExists -RecordId $recordId
+        Assert-PaymentRecordExists -LeadId $recordId -PaymentUrl $paymentUrl
 
         Write-Host "Recreating backend container and verifying persisted data..."
         Invoke-Docker @("compose", "-f", $ComposeFile, "up", "-d", "--force-recreate", "backend")
         Wait-HealthEndpoint -Url $HealthUrl -TimeoutSeconds $TimeoutSeconds
         Assert-PersistenceRecordExists -RecordId $recordId
+        Assert-PaymentRecordExists -LeadId $recordId -PaymentUrl $paymentUrl
     }
 
     $smokePassed = $true
