@@ -9,6 +9,8 @@ nav:
   - API: api.md
   - Architecture: architecture.md
   - Database: database.md
+  - Process:
+      - Increment Chat Workflow: process/increment-chat-workflow.md
   - Conventions: conventions.md
   - Tasks:
       - MDA-3: tasks/MDA-3.md
@@ -17,3 +19,6 @@ nav:
       - MDA-6: tasks/MDA-6.md
       - MDA-7: tasks/MDA-7.md
       - MDA-8: tasks/MDA-8.md
+      - MDA-9: tasks/MDA-9.md
+      - MDA-10: tasks/MDA-10.md
+      - MDA-11: tasks/MDA-11.md

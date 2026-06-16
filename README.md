@@ -184,6 +184,12 @@ Build the documentation site:
 .\scripts\docs\build_docs.ps1
 ```
 
+Run only the documentation step from local CI:
+
+```powershell
+.\scripts\ci\local-ci.ps1 -DocsOnly
+```
+
 Run the Docker smoke test:
 
 ```powershell

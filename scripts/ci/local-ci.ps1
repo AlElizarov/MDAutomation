@@ -1,5 +1,6 @@
 param(
     [string]$VenvPath = ".venv",
+    [switch]$DocsOnly,
     [switch]$SkipDocker
 )
 
@@ -14,6 +15,12 @@ if (-not (Test-Path $VenvPython)) {
 }
 
 Set-Location $Root
+
+if ($DocsOnly) {
+    Write-Host "Building documentation..."
+    & (Join-Path $Root "scripts\docs\build_docs.ps1") -VenvPath $VenvPath
+    return
+}
 
 Write-Host "Checking GitHub Actions YAML..."
 & $VenvPython -c "import pathlib, yaml; yaml.safe_load(pathlib.Path(r'$WorkflowPath').read_text()); print('YAML OK')"
